@@ -105,11 +105,13 @@ contract VaultTest is Test {
         vm.stopPrank();
         vm.warp(90 minutes);
         vm.prank(user);
-        vault.withdraw(50 ether);
-        uint256 expectedFundsAfterWithdrawing = 50 ether;
+        vault.updateInterest();
         vm.prank(user);
-        uint256 acutalFundsAfterWithdrawing = vault.getUserBalance();
-        assertEq(expectedFundsAfterWithdrawing, acutalFundsAfterWithdrawing);
+        vault.withdraw(50 ether);
+        uint256 expectedFundsAfterWithdrawing = 50000856005834500100; //adjusted for interest
+        vm.prank(user);
+        uint256 actualFundsAfterWithdrawing = vault.getUserBalance();
+        assertEq(expectedFundsAfterWithdrawing, actualFundsAfterWithdrawing);
     }
 
     function testWithdrawForUserBalance() public {
@@ -119,10 +121,47 @@ contract VaultTest is Test {
         vm.stopPrank();
         vm.warp(90 minutes);
         vm.prank(user);
-        vault.withdraw(50 ether);
-        uint256 expectedFundsAfterWithdrawing = 950 ether;
+        vault.updateInterest();
+        uint256 withdrawAmount = 50.5 ether;
+        vm.prank(user);
+        vault.withdraw(withdrawAmount);
+        uint256 expectedFundsAfterWithdrawing = 950.5 ether;
         vm.prank(user);
         uint256 acutalFundsAfterWithdrawing = token.balanceOf(user);
         assertEq(expectedFundsAfterWithdrawing, acutalFundsAfterWithdrawing);
+    }
+
+    function testInterestRateApplies() public {
+        vm.startPrank(user);
+        vault.deposit(100 ether);
+        vault.lockFunds(1 hours);
+        uint256 principalBeforeUpdate = vault.getUserBalance();
+        vm.stopPrank();
+        vm.warp(90 minutes);
+        vm.startPrank(user);
+        vault.updateInterest();
+        uint256 principalAfterUpdate = vault.getUserBalance();
+        vm.stopPrank();
+        assertNotEq(principalBeforeUpdate, principalAfterUpdate);
+    }
+
+    function testExactInterestRate() public {
+        //first we will calculate what should interest rate  be for exactly 60 minutes:
+        //uint256 interest = (principal * INTEREST_RATE_PER_SECOND * timeElapsed) / 1e18;
+        // principal is 100 ether, time elapsed 60 minutes
+        // final result : 570776255640000 wei
+        vm.startPrank(user);
+        vault.deposit(100 ether);
+        vault.lockFunds(1 hours);
+        uint256 principalBeforeUpdate = vault.getUserBalance();
+        vm.stopPrank();
+        vm.warp(60 minutes);
+        vm.startPrank(user);
+        vault.updateInterest();
+        uint256 principalAfterUpdate = vault.getUserBalance();
+        vm.stopPrank();
+        uint256 interestValue = principalAfterUpdate - principalBeforeUpdate;
+        // we use assertApproxEqAbs to allow for minor rounding differences due to integer division
+        assertApproxEqAbs(interestValue, 570776255640000, 1e12);
     }
 }
